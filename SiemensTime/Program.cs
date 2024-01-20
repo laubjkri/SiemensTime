@@ -151,11 +151,38 @@ class RegexTest
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine($"Input: '{input}' => Parsed: '{startMatch.Value + contentOrderMatch.Value}': Parsed, but overflow!");
         }
+    }
 
-        // AddToken
+    private static string SubstringSafe(string input, int indexBegin, int indexEnd)
+    {
+        if (input == null) return "";
 
+        int stringEndIndex = input.Length - 1;
+        if (stringEndIndex < 0)
+            stringEndIndex = 0;
 
+        if (indexBegin > stringEndIndex)
+            return "";
 
+        if (indexBegin < 0)
+            indexBegin = 0;
 
+        if (indexEnd > stringEndIndex)
+            indexEnd = stringEndIndex;
+        if (indexEnd < 0)
+            return "";
+
+        int length = indexEnd - indexBegin + 1; // +1 to include the endindex
+        int maxLength = stringEndIndex - indexBegin + 1;
+
+        if (length > maxLength)
+            length = maxLength;
+
+        if (length < 0)
+            length = 0;
+
+        // For debugging
+        string substring = input.Substring(indexBegin, length);
+        return substring;
     }
 }
