@@ -3,18 +3,29 @@ using System.Text.RegularExpressions;
 
 string[] testCasesShouldWork =
 {
-    "t#1d1h1m1s1ms",
-    "t#1d_1h_1m_1s_1ms",
-    "t#1d_1h_1m_1s_1ms_"
+    "t#1d2h3m4s5ms",
+    "TIME#1d2h3m4s5ms",
+    "TIME#1d_2h3m4s_5ms",
+    "T#1d2h3m4s5ms",
+    "T#1D5MS",
+    "t#1d2h3m4s5ms_",
+    "t#1d_2h_3m_4s_5ms",
+    "t#5ms",
+    "t#5ms + \"something else\"",
 };
 
 string[] testCasesShouldNotWork =
 {
+    "t#",
+    "time#",
+    "time#invalidContent",
     "t#1d_1d",
-    "t#1h_1d",
+    "t#1h_1d + + \"something else\"",
     "t#1m_1d",
     "t#1s_1d",
     "t#1ms_1d",
+    "t#1f",
+    "t#25d1h + \"something else\"", // Overflow
 };
 
 string pattern =
@@ -27,21 +38,26 @@ string pattern =
     @"(?:(\d+)(?:ms)_?)?" +
     @"(?!_?\d+(?:d|h|m(?!s)|s|ms))"; // Negative look-ahead assertion (?!...): The milliseconds must not be followed by a bigger unit or another ms or just another number
 
-Console.WriteLine("Should work:");
+
+var originalTextColor = Console.ForegroundColor;
+
+Console.ForegroundColor = ConsoleColor.Green;
+Console.WriteLine("==============================Should work=============================");
 foreach (string testCase in testCasesShouldWork)
 {
     RegexTest.CheckString(testCase);
 }
 
-Console.WriteLine("Should not work:");
+Console.ForegroundColor = ConsoleColor.Red;
+Console.WriteLine("============================Should not work===========================");
 foreach (string testCase in testCasesShouldNotWork)
 {
     RegexTest.CheckString(testCase);
 }
 
-
 while (true)
 {
+    Console.ForegroundColor = originalTextColor;
     Console.Write("Enter siemens time: ");
     string input = Console.ReadLine() ?? "";
 
@@ -50,79 +66,96 @@ while (true)
 
 }
 
-
 class RegexTest
 {
-    private static string timeStartPattern =
+    private static string startPattern =
         @"^(T#|TIME#)"; // Find T# or #TIME in the start of the input
 
-    private static string timeContentPattern =        
-        @"(?=^\d+(?:d|h|m(?!s)|s|ms))" + // "Positive look-ahead assertion (?=...)": We must encounter one of these
-        @"(?:(\d+)d_?)?" + // "Optional non-capturing group (?:...)? with one or more digits followed by an optional underscore
+    private static string contentAvailabePattern =
+        @"(^\d+(d|h|m(?!s)|s|ms)_?)" + // Input must start with this
+        @"(\d+(d|h|m(?!s)|s|ms)_?)*";  // Followed by zero or more of these (we use this later to check where the time input ends)
+
+    private static string contentOrderPattern =
+        @"(?=^\d+(?:d|h|m(?!s)|s|ms))" + // "Positive look-ahead assertion (?=...)": We must encounter one of these. Necessary since all groups below are optional.
+        @"(?:(\d+)d_?)?" + // One or more digits followed by an optional underscore
         @"(?:(\d+)h_?)?" +
         @"(?:(\d+)(?:m(?!s))_?)?" + // The m must not be followed by s for this group to pass    
         @"(?:(\d+)s_?)?" +
-        @"(?:(\d+)(?:ms)_?)?" +
-        @"(?!_?\d+(?:d|h|m(?!s)|s|ms))"; // Negative look-ahead assertion (?!...): The milliseconds must not be followed by a bigger unit or another ms or just another number
+        @"(?:(\d+)(?:ms)_?)?" + // (?:...) non-capturing group
+        @"(?!_?\d+(?:d|h|m(?!s)|s|ms))"; // Negative look-ahead assertion (?!...): The milliseconds must not be followed by any more entries
 
 
     public static void CheckString(string input)
     {
+        int index = 0;
 
-        var startMatch = Regex.Match(input, timeStartPattern, RegexOptions.IgnoreCase);
-
+        // Get the time identifier
+        var startMatch = Regex.Match(input, startPattern, RegexOptions.IgnoreCase);
         if (!startMatch.Success)
         {
-            Console.WriteLine($"'{input}': T# or TIME# syntax not found");
-            return;
-        }
-
-        int index = 0;
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Input '{input}': T# or TIME# syntax not found");
+            return; // No token or error message created return for further evaluation
+        }        
         index += startMatch.Length;
 
-        string content = input.Substring(index);       
-
-        var match = Regex.Match(content, timeContentPattern, RegexOptions.IgnoreCase);
-
-        int groupNumber = 0;
-        foreach ( var group in match.Groups.Values)
+        string content = input.Substring(index);
+        var contentAvailableMatch = Regex.Match(content, contentAvailabePattern, RegexOptions.IgnoreCase);
+        if (!contentAvailableMatch.Success)
         {
-            if (group.Success)
-            {
-                Console.WriteLine($"Group matched: {groupNumber}");
-            }
-            groupNumber++;
+            int sampleTextLength = 5;
+            int availabeTextLength = input.Length - index;
+            if (sampleTextLength > availabeTextLength)
+                sampleTextLength = availabeTextLength;
+            if (sampleTextLength < 0)
+                sampleTextLength = 0;
+
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Input '{input}': Syntax error: Time information missing at pos. {index}: '{startMatch.Value + input.Substring(index, sampleTextLength)}...')");
+            return; // And add token with error information
         }
 
+        index += contentAvailableMatch.Length; // We consume any pattern that matches the time syntax
 
-        if (match.Success)
+        var contentOrderMatch = Regex.Match(content, contentOrderPattern, RegexOptions.IgnoreCase);
+        if (!contentOrderMatch.Success)
         {
-            int days = match.Groups[1].Success ? int.Parse(match.Groups[1].Value) : 0;
-            int hours = match.Groups[2].Success ? int.Parse(match.Groups[2].Value) : 0;
-            int minutes = match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : 0;
-            int seconds = match.Groups[4].Success ? int.Parse(match.Groups[4].Value) : 0;
-            int milliseconds = match.Groups[5].Success ? int.Parse(match.Groups[5].Value) : 0;
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Input '{input}' => Parsed: {startMatch.Value + contentAvailableMatch.Value}: Syntax error: The time format is invalid");
+            return; // And add token with error information
+        }
 
-            try
+        // All syntax good
+        int days         = contentOrderMatch.Groups[1].Success ? int.Parse(contentOrderMatch.Groups[1].Value) : 0;
+        int hours        = contentOrderMatch.Groups[2].Success ? int.Parse(contentOrderMatch.Groups[2].Value) : 0;
+        int minutes      = contentOrderMatch.Groups[3].Success ? int.Parse(contentOrderMatch.Groups[3].Value) : 0;
+        int seconds      = contentOrderMatch.Groups[4].Success ? int.Parse(contentOrderMatch.Groups[4].Value) : 0;
+        int milliseconds = contentOrderMatch.Groups[5].Success ? int.Parse(contentOrderMatch.Groups[5].Value) : 0;
+
+        try
+        {
+            checked
             {
-                checked
-                {
-                    int totalMilliseconds = (days * 24 * 60 * 60 * 1000) +
-                                            (hours * 60 * 60 * 1000) +
-                                            (minutes * 60 * 1000) +
-                                            (seconds * 1000) +
-                                            milliseconds;
-                    Console.WriteLine($"'{input}' total duration in milliseconds: {totalMilliseconds}");
-                }
-            }
-            catch (OverflowException)
-            {
-                Console.WriteLine("The total time duration exceeds the limit of a 32-bit integer.");
+                int totalMilliseconds = (days * 24 * 60 * 60 * 1000) +
+                                        (hours * 60 * 60 * 1000) +
+                                        (minutes * 60 * 1000) +
+                                        (seconds * 1000) +
+                                        milliseconds;
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"Input: '{input}' => Parsed: '{startMatch.Value + contentOrderMatch.Value}': Success! Total duration in milliseconds: {totalMilliseconds}");
+                
             }
         }
-        else
+        catch (OverflowException)
         {
-            Console.WriteLine($"'{input}' the input string does not match the expected format.");
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Input: '{input}' => Parsed: '{startMatch.Value + contentOrderMatch.Value}': Parsed, but overflow!");
         }
+
+        // AddToken
+
+
+
+
     }
 }
